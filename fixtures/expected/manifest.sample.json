@@ -1,0 +1,41 @@
+{
+  "_comment": "Hand-checked oracle for tests/acceptance.organize.test.js. Only srcPath/destRelPath/city/dateTimeOriginal are compared -- other manifest.json fields (generatedAt, destPath, bucketKey, lat/lon, watermark, contactSheet, summary) are run-specific or covered by other assertions.",
+  "entries": [
+    {
+      "srcPath": "fixtures/.tmp/raw/img1.jpg",
+      "destRelPath": "2025/2025-01-15_berlin/2025-01-15_101500_berlin_001.jpg",
+      "dateTimeOriginal": "2025:01:15 10:15:00",
+      "city": "Berlin"
+    },
+    {
+      "srcPath": "fixtures/.tmp/raw/img2.jpg",
+      "destRelPath": "2025/2025-01-15_berlin/2025-01-15_113000_berlin_002.jpg",
+      "dateTimeOriginal": "2025:01:15 11:30:00",
+      "city": "Berlin"
+    },
+    {
+      "srcPath": "fixtures/.tmp/raw/img3.jpg",
+      "destRelPath": "2025/2025-01-15_hamburg/2025-01-15_090000_hamburg_001.jpg",
+      "dateTimeOriginal": "2025:01:15 09:00:00",
+      "city": "Hamburg"
+    },
+    {
+      "srcPath": "fixtures/.tmp/raw/img4.jpg",
+      "destRelPath": "2025/2025-06-02_munich/2025-06-02_142000_munich_001.jpg",
+      "dateTimeOriginal": "2025:06:02 14:20:00",
+      "city": "Munich"
+    },
+    {
+      "srcPath": "fixtures/.tmp/raw/img5.jpg",
+      "destRelPath": "2025/2025-06-02_hamburg/2025-06-02_164500_hamburg_001.jpg",
+      "dateTimeOriginal": "2025:06:02 16:45:00",
+      "city": "Hamburg"
+    },
+    {
+      "srcPath": "fixtures/.tmp/raw/img6.jpg",
+      "destRelPath": "2025/2025-11-30_munich/2025-11-30_080500_munich_001.jpg",
+      "dateTimeOriginal": "2025:11:30 08:05:00",
+      "city": "Munich"
+    }
+  ]
+}
