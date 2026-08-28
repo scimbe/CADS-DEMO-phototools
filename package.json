@@ -1,0 +1,17 @@
+{
+  "name": "phototools-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Foto-Batch-Organizer -- deterministic exiftool + ImageMagick pipeline that sorts/renames/watermarks photos by real EXIF date+GPS and builds a contact sheet, for bunsenbrenner.org demo portfolio",
+  "bin": { "phototools": "bin/phototools.js" },
+  "main": "src/cli/index.js",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "fixture:generate": "node fixtures/generate.js",
+    "fixture:organize": "node fixtures/generate.js && node bin/phototools.js organize fixtures/.tmp/raw --out fixtures/.tmp/sorted --watermark-text \"bunsenbrenner.org . demo\" --contact-sheet"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
+  "engines": { "node": ">=18" }
+}
