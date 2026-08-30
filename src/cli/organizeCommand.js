@@ -11,6 +11,8 @@ const { planNames } = require("../organize/planNames");
 const { applyPlan } = require("../organize/apply");
 const { watermarkFile } = require("../imagemagick/watermark");
 const { buildContactSheet } = require("../imagemagick/contactSheet");
+const { buildGallery } = require("../gallery/buildGallery");
+const { describeImage, isConfigured: isVisionConfigured, visionModel } = require("../vision/describe");
 const { summarize, isConfigured } = require("../llm/summarize");
 const log = require("../util/log");
 
@@ -29,9 +31,11 @@ async function listImages(srcDir) {
  * organizeCommand(argv) -> Promise<number> (exit code)
  * The full deterministic pipeline (plan step 4): read EXIF -> resolve GPS to nearest gazetteer
  * city -> plan dest names -> copy/move into place + write manifest.json -> optional watermark
- * (+EXIF re-stamp) -> optional contact sheet -> optional (fully independent, non-fatal) LLM
- * one-line summary. Every step after "plan+apply" is opt-in via a flag; none of them can make
- * the deterministic core fail or block.
+ * (+EXIF re-stamp) -> optional per-photo vision caption/tags -> optional contact sheet -> optional
+ * self-contained HTML gallery (click-to-enlarge lightbox) -> optional (fully independent,
+ * non-fatal) LLM one-line summary. Every step after "plan+apply" is opt-in via a flag; none of
+ * them -- vision and summary included, both of which touch the network -- can make the
+ * deterministic core fail or block.
  */
 async function organizeCommand(argv) {
   const opts = parseOrganizeArgs(argv);
@@ -81,6 +85,38 @@ async function organizeCommand(argv) {
     manifest.watermark = null;
   }
 
+  if (opts.vision) {
+    if (!isVisionConfigured(process.env)) {
+      log.info("vision: skipped (no LITELLM_API_KEY configured)");
+      manifest.vision = null;
+    } else {
+      const model = visionModel(process.env);
+      let described = 0;
+      let failed = 0;
+      // Per-photo, sequential, and each call independently non-fatal: a vision failure on one
+      // photo (or all of them) never fails the deterministic organize run -- it just leaves that
+      // photo without a caption. The first failure is surfaced loudly on stderr, and the run's
+      // net vision outcome is recorded in manifest.vision, never silently swallowed.
+      for (const entry of manifest.entries) {
+        try {
+          const { caption, tags } = await describeImage(entry.destPath, process.env);
+          entry.vision = { caption, tags, model };
+          described += 1;
+        } catch (err) {
+          entry.vision = null;
+          failed += 1;
+          if (failed === 1) {
+            log.warn(`vision step failed on ${entry.destRelPath}, continuing: ${err.message}`);
+          }
+        }
+      }
+      manifest.vision = { model, described, failed, total: manifest.entries.length };
+      log.info(`vision: described ${described}/${manifest.entries.length} photo(s) via ${model}` + (failed ? ` (${failed} failed)` : ""));
+    }
+  } else {
+    manifest.vision = null;
+  }
+
   if (opts.contactSheet) {
     const contactSheetPath = path.join(opts.out, "contact-sheet.jpg");
     const destPaths = manifest.entries.map((e) => e.destPath).sort();
@@ -89,6 +125,18 @@ async function organizeCommand(argv) {
     log.info(`contact sheet: ${contactSheetPath}`);
   } else {
     manifest.contactSheet = null;
+  }
+
+  if (opts.gallery) {
+    // Written last of the artifact steps so it can reflect the watermarked destination files and
+    // any --vision captions already attached to manifest.entries. Self-contained HTML with an
+    // inline click-to-enlarge lightbox; references the sorted photos by relative path.
+    const galleryPath = path.join(opts.out, "gallery.html");
+    await buildGallery(manifest, galleryPath);
+    manifest.gallery = galleryPath;
+    log.info(`gallery: ${galleryPath}`);
+  } else {
+    manifest.gallery = null;
   }
 
   if (opts.summary) {
