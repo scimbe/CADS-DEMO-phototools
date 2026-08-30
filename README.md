@@ -8,6 +8,30 @@ EXIF date and GPS location, watermark them, and build a contact sheet. An LLM ca
 tool orchestration works with zero LLM/network involvement**, and the tests prove that structurally,
 not just by claim.
 
+Tracking issue: [CADS-agent-marketplace#27](https://github.com/scimbe/CADS-agent-marketplace/issues/27).
+
+## Marketplace status
+
+This demo is published to the live **bunsenbrenner.org** registry
+(`registry.bunsenbrenner.org`) as a signed manifest. Verified present on 2026-08-29:
+
+- name `phototools`, latest version `0.1.3`, `installer_kind: binary`
+- publisher pubkey `1292c0cc…ce69b` (shared across the whole demo portfolio)
+- manifest id `e787e750…6194d`
+
+Reproduce the check yourself:
+
+```bash
+curl -s https://registry.bunsenbrenner.org/manifests | grep '"name":"phototools"'
+```
+
+**Measured vs. claimed:** what is *measured* here is that the manifest — signed metadata
+plus a publisher-signed bundle reference — is listed on the registry. The registry's own
+guardrail verdict for a binary-kind manifest explicitly notes it is **not** a static bundle
+scan; trust rests on the publisher-pubkey allowlist checked at activation time. It is **not**
+a claim that an always-on hosted `*.bunsenbrenner.org` service exists — this is a CLI-only
+tool, and live tunnel/service deployment would be a separate, later step.
+
 ## What this is (and isn't)
 
 Most "AI photo organizer" demos either fake the sorting logic or quietly depend on a vision model
