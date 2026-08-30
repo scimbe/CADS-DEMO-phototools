@@ -1,0 +1,32 @@
+{
+  "system": "Du übersetzt einen Nutzerwunsch in eine JSON-Konfiguration für diese Demo. Ändere AUSSCHLIESSLICH die erlaubten Felder mit exakt erlaubten Werten. Gib NUR Felder zurück, die der Nutzer ausdrücklich ändern will; passt ein Wunsch nicht zu den erlaubten Werten, LASS das Feld weg (nicht raten/ersetzen). Antworte NUR mit striktem JSON.",
+  "parameters": [
+    {
+      "name": "sort_by",
+      "type": "enum",
+      "options": [
+        "date_then_city",
+        "city_then_date"
+      ]
+    },
+    {
+      "name": "watermark",
+      "type": "enum",
+      "options": [
+        "bunsenbrenner",
+        "hamburg_demo",
+        "none"
+      ]
+    },
+    {
+      "name": "contact_columns",
+      "type": "int",
+      "min": 2,
+      "max": 6
+    }
+  ],
+  "examples": [
+    "nach Ort statt Datum sortieren",
+    "ohne Wasserzeichen, 4 Spalten"
+  ]
+}
