@@ -14,9 +14,16 @@ const { buildContactSheet } = require("../imagemagick/contactSheet");
 const { buildGallery } = require("../gallery/buildGallery");
 const { describeImage, isConfigured: isVisionConfigured, visionModel } = require("../vision/describe");
 const { summarize, isConfigured } = require("../llm/summarize");
+const { mapWithConcurrency } = require("../util/concurrency");
 const log = require("../util/log");
 
 const IMAGE_EXT_RE = /\.(jpe?g)$/i;
+
+// Bounded parallelism for the independent per-photo steps. Kept small on purpose: enough to hide
+// the per-photo latency (network round-trip for vision, process spawn for ImageMagick) without
+// flooding the vision backend or forking an unbounded pile of `convert` processes on a big batch.
+const VISION_CONCURRENCY = 4;
+const WATERMARK_CONCURRENCY = 4;
 
 /** listImages(srcDir) -> Promise<string[]> sorted, srcDir-relative-joined paths to *.jpg/*.jpeg (case-insensitive), files only. */
 async function listImages(srcDir) {
@@ -75,10 +82,14 @@ async function organizeCommand(argv) {
   log.info(`organized ${manifest.count} photo(s) into ${opts.out} (${manifest.mode})`);
 
   if (opts.watermarkText) {
-    for (const entry of manifest.entries) {
+    // Each photo's watermark+restamp is independent of every other photo's, so run them in a
+    // bounded pool. Within a single task the order is preserved (watermark first, THEN re-stamp
+    // EXIF from the original) -- that per-file ordering is the load-bearing one. A failure on any
+    // photo rejects the whole map, so a broken watermark still fails the run exactly as before.
+    await mapWithConcurrency(manifest.entries, WATERMARK_CONCURRENCY, async (entry) => {
       await watermarkFile(entry.destPath, opts.watermarkText, pickDefined({ pointsize: opts.pointsize }));
       await restampExif(entry.srcPath, entry.destPath);
-    }
+    });
     manifest.watermark = { text: opts.watermarkText, appliedTo: manifest.entries.length };
     log.info(`watermarked ${manifest.entries.length} photo(s): "${opts.watermarkText}"`);
   } else {
@@ -91,24 +102,29 @@ async function organizeCommand(argv) {
       manifest.vision = null;
     } else {
       const model = visionModel(process.env);
-      let described = 0;
-      let failed = 0;
-      // Per-photo, sequential, and each call independently non-fatal: a vision failure on one
-      // photo (or all of them) never fails the deterministic organize run -- it just leaves that
-      // photo without a caption. The first failure is surfaced loudly on stderr, and the run's
-      // net vision outcome is recorded in manifest.vision, never silently swallowed.
-      for (const entry of manifest.entries) {
+      // Per-photo and each call independently non-fatal: a vision failure on one photo (or all of
+      // them) never fails the deterministic organize run -- it just leaves that photo without a
+      // caption. The photos are independent, so run them in a BOUNDED pool (never one unbounded
+      // request per photo) to hide the per-photo network round-trip without flooding the backend.
+      // Each worker swallows its own error and reports an outcome, so the map itself never throws;
+      // outcomes come back in entry order, so the first failure is logged deterministically.
+      const outcomes = await mapWithConcurrency(manifest.entries, VISION_CONCURRENCY, async (entry) => {
         try {
           const { caption, tags } = await describeImage(entry.destPath, process.env);
           entry.vision = { caption, tags, model };
-          described += 1;
+          return { ok: true };
         } catch (err) {
           entry.vision = null;
-          failed += 1;
-          if (failed === 1) {
-            log.warn(`vision step failed on ${entry.destRelPath}, continuing: ${err.message}`);
-          }
+          return { ok: false, error: err };
         }
+      });
+      const described = outcomes.filter((o) => o.ok).length;
+      const failed = outcomes.length - described;
+      const firstFailIdx = outcomes.findIndex((o) => !o.ok);
+      if (firstFailIdx !== -1) {
+        log.warn(
+          `vision step failed on ${manifest.entries[firstFailIdx].destRelPath}, continuing: ${outcomes[firstFailIdx].error.message}`
+        );
       }
       manifest.vision = { model, described, failed, total: manifest.entries.length };
       log.info(`vision: described ${described}/${manifest.entries.length} photo(s) via ${model}` + (failed ? ` (${failed} failed)` : ""));
