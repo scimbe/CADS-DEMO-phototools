@@ -41,15 +41,27 @@ to "look at" the photos. This one does neither:
   filename heuristic.
 - **Location is resolved offline**, via a small bundled gazetteer of ~20 real cities + haversine
   nearest-neighbor — no geocoding API key, no network dependency, fully deterministic.
-- **The LLM never sees pixels.** `local-devstral-small2` (the shared demo model) is a coding
-  model, not documented as vision-capable, so the optional `--summary` step sends it a short
-  *text* description of the batch's aggregate metadata (counts per date/city, date range) and
-  asks for a one-line caption. It is never asked to describe image content it was never shown.
-- **The LLM step is structurally optional**, not just "usually works": `organizeCommand.js` only
-  ever calls it when `--summary` is passed *and* `LITELLM_API_KEY`/`LITELLM_BASE_URL` are set
-  (`src/llm/summarize.js#isConfigured`). Unset the key and `--summary` cleanly no-ops (exit 0, no
-  `summary.txt`) — proven by an automated test that deliberately strips the key from the child
-  process's environment, not just by "nobody happened to set it this run."
+- **The `--summary` step never sees pixels.** It sends the model a short *text* description of the
+  batch's aggregate metadata (counts per date/city, date range) and asks for a one-line caption —
+  it is never asked to describe image content it was never shown. That is a deliberate property of
+  the *summary* path and stays true regardless of the model's capabilities.
+- **`--vision` is a separate, opt-in step that *does* see pixels.** It sends each organized photo
+  (base64-inlined, OpenAI-vision `image_url` format) to the litellm proxy and asks for a one-line
+  content caption + a few tags, which enrich `manifest.json` and the HTML gallery. It is meant for
+  a real vision model (`local-llava`, Qwen2.5-VL, …) via `LITELLM_VISION_MODEL`. Honest note on the
+  shared demo deployment: the demo API key is scoped to exactly one model, `local-devstral-small2`,
+  and no dedicated VLM is reachable with it — but that model *as proxied* accepts image input and
+  returns per-image, content-accurate captions (verified live against distinct photos plus a
+  solid-color control: the captions differ per image and match the actual pixels, not a generic
+  hallucination). So `--vision` works out-of-the-box against the shared model, and can be repointed
+  at a dedicated VLM on any deployment whose key allows it. See `src/vision/describe.js`.
+- **Both network steps are structurally optional**, not just "usually work": `organizeCommand.js`
+  only ever calls `--summary`/`--vision` when the flag is passed *and*
+  `LITELLM_API_KEY`/`LITELLM_BASE_URL` are set (`isConfigured`). Unset the key and `--summary`
+  cleanly no-ops (exit 0, no `summary.txt`) — proven by an automated test that deliberately strips
+  the key from the child process's environment. `--vision` degrades the same way (clean skip with
+  no key; a per-photo call failure is logged and leaves that photo caption-less, never failing the
+  deterministic organize run).
 
 ## Quickstart
 
@@ -74,7 +86,7 @@ See `fixtures/README.md` for exactly what the fixture batch contains and why.
 ## How it works
 
 ```
-phototools organize <srcDir> --out <dir> [--move] [--watermark-text "<text>"] [--contact-sheet] [--summary]
+phototools organize <srcDir> --out <dir> [--move] [--watermark-text "<text>"] [--vision] [--contact-sheet] [--gallery] [--summary]
 ```
 
 1. **Read EXIF** (`src/exif/read.js`): one batched `exiftool -j -G -a -n <files...>` call for the
@@ -99,9 +111,23 @@ phototools organize <srcDir> --out <dir> [--move] [--watermark-text "<text>"] [-
    `restampExif`). This is deliberate, not paranoia: ImageMagick's own EXIF passthrough on write
    is version/config-dependent, so "EXIF survives watermarking" is made a guaranteed property of
    the pipeline instead of an assumption about IM internals — see `docs/ARCHITECTURE.md`.
-6. **Contact sheet** (`--contact-sheet`, `src/imagemagick/contactSheet.js`): one `montage` call
+6. **Vision** (`--vision`, `src/vision/describe.js`): optional, per photo. Base64-inlines each
+   organized destination file and POSTs it to `${LITELLM_BASE_URL}/chat/completions` in OpenAI
+   vision `image_url` format, asking for a one-line content caption + 3–6 tags as strict JSON
+   (parsed defensively: fenced/chatty output still yields a usable caption). Each call is
+   independently non-fatal — a failure leaves that photo's `vision` null and is logged, never
+   failing the run. Results land on `manifest.entries[].vision` and feed the gallery. Uses
+   `LITELLM_VISION_MODEL` (fallback `LITELLM_DEFAULT_MODEL`).
+7. **Contact sheet** (`--contact-sheet`, `src/imagemagick/contactSheet.js`): one `montage` call
    over every destination file, labeled by filename.
-7. **Summary** (`--summary`, `src/llm/summarize.js`): optional, text-only, degrades to a logged
+8. **Gallery** (`--gallery`, `src/gallery/buildGallery.js`): writes a single, self-contained
+   `<out>/gallery.html` — a responsive grid grouped by date+city, with an inline
+   **click-to-enlarge lightbox** (Esc / backdrop-click to close, ←/→ to step through, focus moved
+   into the dialog on open). No external CDN/script/font: all CSS+JS is inlined and the sorted
+   photos are referenced by relative path, so it works both opened from disk and served out of the
+   `--out` directory. When `--vision` ran, each photo shows its AI caption + tags; without it the
+   page still renders cleanly from EXIF date + city.
+9. **Summary** (`--summary`, `src/llm/summarize.js`): optional, text-only, degrades to a logged
    skip (not an error) with no key configured; a real call failure (network, auth, exhausted
    budget) is caught and logged loudly to stderr — never silently swallowed as a false "skipped."
 
@@ -115,10 +141,14 @@ phototools organize <srcDir> --out <dir> [--move] [--watermark-text "<text>"] [-
     { "srcPath": "fixtures/.tmp/raw/img1.jpg",
       "destRelPath": "2025/2025-01-15_berlin/2025-01-15_101500_berlin_001.jpg",
       "dateTimeOriginal": "2025:01:15 10:15:00", "city": "Berlin", "lat": 52.52, "lon": 13.405,
-      "destPath": "fixtures/.tmp/sorted/2025/2025-01-15_berlin/2025-01-15_101500_berlin_001.jpg" }
+      "destPath": "fixtures/.tmp/sorted/2025/2025-01-15_berlin/2025-01-15_101500_berlin_001.jpg",
+      "vision": { "caption": "A city skyline at sunset with a tall tower in the center.",
+                  "tags": ["city", "skyline", "tower", "sunset"], "model": "local-devstral-small2" } }
   ],
   "watermark": { "text": "...", "appliedTo": 6 },
+  "vision": { "model": "local-devstral-small2", "described": 6, "failed": 0, "total": 6 },
   "contactSheet": "fixtures/.tmp/sorted/contact-sheet.jpg",
+  "gallery": "fixtures/.tmp/sorted/gallery.html",
   "summary": null
 }
 ```
@@ -130,7 +160,9 @@ phototools organize <srcDir> --out <dir> [--move] [--watermark-text "<text>"] [-
 | `organize <srcDir> --out <dir>` | Required. Reads every `*.jpg`/`*.jpeg` in `srcDir`, sorts/renames into `<dir>`, writes `manifest.json`. |
 | `--move` | Move instead of copy. **Default is copy** — originals are never mutated unless this is explicitly passed. |
 | `--watermark-text "<text>"` | Watermarks every destination copy (bottom-right, semi-transparent white), then re-stamps EXIF. |
+| `--vision` | Per-photo AI content caption + tags (vision model via the litellm proxy), written to `manifest.entries[].vision`. Non-fatal per photo; no-ops cleanly with no LLM key. See `LITELLM_VISION_MODEL`. |
 | `--contact-sheet` | Builds `<out>/contact-sheet.jpg` from every destination file. |
+| `--gallery` | Writes a self-contained `<out>/gallery.html` (grid + click-to-enlarge lightbox, no external assets). Shows `--vision` captions/tags when present. |
 | `--summary` | Attempts a one-line LLM caption of the batch's aggregate metadata → `<out>/summary.txt`. No-ops cleanly if no LLM key is configured. |
 | `--pointsize <n>`, `--tile <spec>`, `--geometry <spec>` | Override the ImageMagick watermark/contact-sheet defaults. |
 
@@ -182,6 +214,8 @@ src/exif/                  exiftool read/write wrappers
 src/geocode/                gazetteer + haversine nearest-city
 src/organize/               pure name-planning + filesystem apply
 src/imagemagick/            convert (watermark) / montage (contact sheet) wrappers
+src/vision/                 optional per-photo litellm-proxy vision caption/tags (opt-in --vision)
+src/gallery/                self-contained HTML gallery + click-to-enlarge lightbox (--gallery)
 src/llm/                    optional litellm-proxy summary
 src/util/                   execFile wrapper (argv-array only, no shell string concat), logging
 fixtures/                  synthetic-photo generator + hand-checked oracle manifest

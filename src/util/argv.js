@@ -1,8 +1,8 @@
 "use strict";
 
 /**
- * parseOrganizeArgs(argv) -> { srcDir, out, move, watermarkText, contactSheet, summary,
- *                               pointsize, tile, geometry }
+ * parseOrganizeArgs(argv) -> { srcDir, out, move, watermarkText, contactSheet, gallery, vision,
+ *                               summary, pointsize, tile, geometry }
  * Minimal hand-rolled parser for the one subcommand this CLI has -- deliberately not pulling in
  * a full argv-parsing dependency for a handful of flags. `argv` is process.argv.slice(3) (i.e.
  * with node/script/"organize" already stripped by the caller).
@@ -17,6 +17,8 @@ function parseOrganizeArgs(argv) {
     move: false,
     watermarkText: null,
     contactSheet: false,
+    gallery: false,
+    vision: false,
     summary: false,
     pointsize: undefined,
     tile: undefined,
@@ -38,6 +40,12 @@ function parseOrganizeArgs(argv) {
         break;
       case "--contact-sheet":
         opts.contactSheet = true;
+        break;
+      case "--gallery":
+        opts.gallery = true;
+        break;
+      case "--vision":
+        opts.vision = true;
         break;
       case "--summary":
         opts.summary = true;
