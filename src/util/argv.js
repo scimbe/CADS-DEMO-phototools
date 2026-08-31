@@ -2,7 +2,7 @@
 
 /**
  * parseOrganizeArgs(argv) -> { srcDir, out, move, watermarkText, contactSheet, gallery, vision,
- *                               summary, pointsize, tile, geometry }
+ *                               summary, pointsize, tile, geometry, font }
  * Minimal hand-rolled parser for the one subcommand this CLI has -- deliberately not pulling in
  * a full argv-parsing dependency for a handful of flags. `argv` is process.argv.slice(3) (i.e.
  * with node/script/"organize" already stripped by the caller).
@@ -23,6 +23,7 @@ function parseOrganizeArgs(argv) {
     pointsize: undefined,
     tile: undefined,
     geometry: undefined,
+    font: undefined,
   };
 
   const positionals = [];
@@ -58,6 +59,9 @@ function parseOrganizeArgs(argv) {
         break;
       case "--geometry":
         opts.geometry = argv[++i];
+        break;
+      case "--font":
+        opts.font = argv[++i];
         break;
       default:
         if (arg.startsWith("--")) {

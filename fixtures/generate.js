@@ -25,6 +25,7 @@ const path = require("node:path");
 const { execImageMagick } = require("../src/util/shell");
 const { writeExif } = require("../src/exif/write");
 const { readExif, toDecimalDegrees } = require("../src/exif/read");
+const { resolveFont } = require("../src/imagemagick/font");
 
 const RAW_DIR = path.join(__dirname, ".tmp", "raw");
 const GPS_TOLERANCE_DEG = 1e-4; // ~11m -- generous vs exiftool's rational-degree round-trip
@@ -49,6 +50,11 @@ async function main() {
       "-size",
       "800x600",
       `xc:${spec.color}`,
+      // -font is load-bearing: -annotate needs a font, and a host with no default font
+      // (e.g. Homebrew IM7) fails with `unable to read font ''` -- use the bundled DejaVu Sans
+      // (or WATERMARK_FONT), same resolver the watermark/contact-sheet steps use.
+      "-font",
+      resolveFont(),
       "-gravity",
       "center",
       "-pointsize",

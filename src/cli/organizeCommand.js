@@ -87,7 +87,7 @@ async function organizeCommand(argv) {
     // EXIF from the original) -- that per-file ordering is the load-bearing one. A failure on any
     // photo rejects the whole map, so a broken watermark still fails the run exactly as before.
     await mapWithConcurrency(manifest.entries, WATERMARK_CONCURRENCY, async (entry) => {
-      await watermarkFile(entry.destPath, opts.watermarkText, pickDefined({ pointsize: opts.pointsize }));
+      await watermarkFile(entry.destPath, opts.watermarkText, pickDefined({ pointsize: opts.pointsize, font: opts.font }));
       await restampExif(entry.srcPath, entry.destPath);
     });
     manifest.watermark = { text: opts.watermarkText, appliedTo: manifest.entries.length };
@@ -136,7 +136,7 @@ async function organizeCommand(argv) {
   if (opts.contactSheet) {
     const contactSheetPath = path.join(opts.out, "contact-sheet.jpg");
     const destPaths = manifest.entries.map((e) => e.destPath).sort();
-    await buildContactSheet(destPaths, contactSheetPath, pickDefined({ tile: opts.tile, geometry: opts.geometry }));
+    await buildContactSheet(destPaths, contactSheetPath, pickDefined({ tile: opts.tile, geometry: opts.geometry, font: opts.font }));
     manifest.contactSheet = contactSheetPath;
     log.info(`contact sheet: ${contactSheetPath}`);
   } else {
