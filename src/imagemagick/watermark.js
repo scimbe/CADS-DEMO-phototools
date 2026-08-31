@@ -1,6 +1,7 @@
 "use strict";
 
 const { execImageMagick } = require("../util/shell");
+const { resolveFont } = require("./font");
 
 const DEFAULTS = {
   gravity: "SouthEast",
@@ -11,9 +12,13 @@ const DEFAULTS = {
 
 /**
  * watermarkFile(filePath, text, opts = {}) -> Promise<void>
- * Runs ImageMagick `convert <filePath> -gravity <g> -pointsize <n> -fill <color>
+ * Runs ImageMagick `convert <filePath> -font <font> -gravity <g> -pointsize <n> -fill <color>
  * -annotate <offset> "<text>" <filePath>` -- in place: IM reads the whole image into memory
  * before writing, so same-path in/out is safe for a single-frame JPEG.
+ *
+ * `-font` is load-bearing, not cosmetic: without an explicit font, IM on a host with no default
+ * font fails with `unable to read font ''`. `opts.font` (CLI `--font`) / WATERMARK_FONT override
+ * the bundled DejaVu Sans default -- see src/imagemagick/font.js.
  *
  * IMPORTANT (see docs/ARCHITECTURE.md): this alone does NOT guarantee EXIF survives -- IM's
  * EXIF passthrough on write is version/config-dependent. Callers MUST follow this with
@@ -23,9 +28,12 @@ const DEFAULTS = {
  */
 async function watermarkFile(filePath, text, opts = {}) {
   const { gravity, pointsize, fill, offset } = { ...DEFAULTS, ...opts };
+  const font = resolveFont({ font: opts.font });
 
   const { stderr, exitCode } = await execImageMagick("convert", [
     filePath,
+    "-font",
+    font,
     "-gravity",
     gravity,
     "-pointsize",

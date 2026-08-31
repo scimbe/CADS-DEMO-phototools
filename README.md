@@ -106,11 +106,15 @@ phototools organize <srcDir> --out <dir> [--move] [--watermark-text "<text>"] [-
    into place, creates directories as needed, and writes `<out>/manifest.json` — the full
    before→after mapping, which is also the acceptance test's machine-checkable oracle.
 5. **Watermark** (`--watermark-text`, `src/imagemagick/watermark.js`): runs ImageMagick `convert`
-   with `-gravity SouthEast -annotate` on every destination copy, **then immediately re-stamps
-   EXIF from the original source** via `exiftool -tagsFromFile ... -all:all` (`src/exif/write.js`
-   `restampExif`). This is deliberate, not paranoia: ImageMagick's own EXIF passthrough on write
-   is version/config-dependent, so "EXIF survives watermarking" is made a guaranteed property of
-   the pipeline instead of an assumption about IM internals — see `docs/ARCHITECTURE.md`.
+   with `-font <font> -gravity SouthEast -annotate` on every destination copy, **then immediately
+   re-stamps EXIF from the original source** via `exiftool -tagsFromFile ... -all:all`
+   (`src/exif/write.js` `restampExif`). This is deliberate, not paranoia: ImageMagick's own EXIF
+   passthrough on write is version/config-dependent, so "EXIF survives watermarking" is made a
+   guaranteed property of the pipeline instead of an assumption about IM internals — see
+   `docs/ARCHITECTURE.md`. The `-font` is load-bearing too: a host with no configured default font
+   (e.g. Homebrew IM7, a scrubbed container) makes `-annotate`/`-label` fail with `unable to read
+   font ''`, so the pipeline always passes a concrete font, defaulting to the **bundled** DejaVu
+   Sans (`assets/fonts/`) — override with `--font <path>` or `WATERMARK_FONT` (`src/imagemagick/font.js`).
 6. **Vision** (`--vision`, `src/vision/describe.js`): optional, per photo. Base64-inlines each
    organized destination file and POSTs it to `${LITELLM_BASE_URL}/chat/completions` in OpenAI
    vision `image_url` format, asking for a one-line content caption + 3–6 tags as strict JSON
@@ -165,6 +169,7 @@ phototools organize <srcDir> --out <dir> [--move] [--watermark-text "<text>"] [-
 | `--gallery` | Writes a self-contained `<out>/gallery.html` (grid + click-to-enlarge lightbox, no external assets). Shows `--vision` captions/tags when present. |
 | `--summary` | Attempts a one-line LLM caption of the batch's aggregate metadata → `<out>/summary.txt`. No-ops cleanly if no LLM key is configured. |
 | `--pointsize <n>`, `--tile <spec>`, `--geometry <spec>` | Override the ImageMagick watermark/contact-sheet defaults. |
+| `--font <path>` | Font for the watermark + contact-sheet labels. Defaults to the bundled DejaVu Sans (`assets/fonts/`); also settable via `WATERMARK_FONT`. Needed because IM `-annotate`/`-label` fail with no default font on some hosts. |
 
 ## Environment setup
 
@@ -178,6 +183,15 @@ and falls back to IM7's single-binary form (`magick convert`, `magick montage`) 
 isn't found but `magick` is — **that fallback path is written defensively but has not been
 exercised on real IM7**, since no IM7 host was available to test against. Flagging this honestly
 rather than claiming untested coverage.
+
+**Fonts:** the watermark (`convert -annotate`) and contact sheet (`montage -label`) both render
+text, which ImageMagick can only do with a font. A host with **no configured default font** (a
+freshly-installed Homebrew IM7, a scrubbed/minimal container) otherwise fails with `unable to read
+font ''`. To keep text rendering host-independent, this repo **bundles** DejaVu Sans
+(`assets/fonts/DejaVuSans.ttf`, free/redistributable — `assets/fonts/LICENSE-DejaVu.txt`) and
+always passes it as an explicit `-font`. Override with `--font <path>` or the `WATERMARK_FONT`
+environment variable to use a system/brand font instead. No fontconfig setup on the host is
+required for the defaults to work.
 
 **No root in this dev sandbox, honestly:** the sandbox this repo was built in has no passwordless
 `sudo`, so `apt-get install libimage-exiftool-perl` wasn't possible here. exiftool was instead
@@ -213,7 +227,8 @@ src/cli/                   argv parsing + organize orchestration
 src/exif/                  exiftool read/write wrappers
 src/geocode/                gazetteer + haversine nearest-city
 src/organize/               pure name-planning + filesystem apply
-src/imagemagick/            convert (watermark) / montage (contact sheet) wrappers
+src/imagemagick/            convert (watermark) / montage (contact sheet) wrappers + font resolver
+assets/fonts/               bundled DejaVu Sans (+license) so IM text rendering is host-independent
 src/vision/                 optional per-photo litellm-proxy vision caption/tags (opt-in --vision)
 src/gallery/                self-contained HTML gallery + click-to-enlarge lightbox (--gallery)
 src/llm/                    optional litellm-proxy summary
